@@ -29,13 +29,13 @@
   .tab.active { background: #1a1a2e; color: #fff; border-color: #4a4a8a; }
   .tab:hover { color: #fff; }
   @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
   .session-panel { background: linear-gradient(135deg, #1a1a2e, #16213e); border: 1px solid #4a4a8a; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
   .session-panel .info { flex: 1; min-width: 200px; }
   .session-panel .info h2 { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.3rem; }
   .session-panel .code { font-size: 2.5rem; font-weight: 700; color: #fff; letter-spacing: 4px; font-family: monospace; }
   .session-panel .sub { font-size: 0.8rem; color: #666; margin-top: 0.3rem; }
   .session-panel .qr { background: #fff; padding: 8px; border-radius: 8px; flex-shrink: 0; }
+  .connection-status { font-size: 0.75rem; color: #f87171; margin-top: 0.5rem; }
 </style>
 </head>
 <body>
@@ -46,6 +46,7 @@
 
   <div class="container">
     <div id="sessionPanel" class="session-panel" style="display:none"></div>
+    <div id="connectionStatus" class="connection-status"></div>
 
     <div class="tabs">
       <button class="tab active" data-tab="recent">Recent</button>
@@ -55,7 +56,7 @@
 
     <div id="emptyState" class="empty">
       <h2>Wacht op scans...</h2>
-      <p id="emptyMsg">Open de scan-pagina op je mobiel om te beginnen.</p>
+      <p id="emptyMsg">Scan de QR-code met je mobiel om te beginnen.</p>
     </div>
 
     <div id="productGrid" class="products" style="display:none"></div>
@@ -68,25 +69,26 @@
   const emptyMsg = document.getElementById('emptyMsg');
   const scanCount = document.getElementById('scanCount');
   const sessionPanel = document.getElementById('sessionPanel');
+  const connectionStatus = document.getElementById('connectionStatus');
   let allScans = [];
   let currentTab = 'recent';
+  let vercelUrl = '';
 
   fetch('/api/config').then(r => r.json()).then(config => {
-    if (config.mode === 'relay') {
-      const scanUrl = `${config.relayUrl}/scan?s=${config.sessionCode}&r=${encodeURIComponent(config.relayUrl)}`;
+    vercelUrl = config.vercelUrl || '';
+    if (vercelUrl && config.sessionCode) {
+      const scanUrl = `${vercelUrl}/scan?s=${config.sessionCode}`;
       sessionPanel.style.display = 'flex';
       sessionPanel.innerHTML = `
         <div class="info">
           <h2>Scan verbinding</h2>
           <div class="code">${config.sessionCode}</div>
-          <div class="sub">Scan de QR-code met je mobiel om te verbinden</div>
+          <div class="sub">Scan de QR-code met je mobiel</div>
         </div>
         <div class="qr" id="qrCode"></div>
       `;
       new QRCode(document.getElementById('qrCode'), { text: scanUrl, width: 130, height: 130 });
-      emptyMsg.textContent = `Scan de QR-code met je mobiel om te beginnen. Sessie: ${config.sessionCode}`;
-    } else {
-      emptyMsg.textContent = 'Open je mobiel op http://&lt;pc-ip&gt;:3000/scan om te beginnen.';
+      emptyMsg.textContent = `Scan de QR-code met je mobiel. Sessie: ${config.sessionCode}`;
     }
   });
 
@@ -103,6 +105,9 @@
     allScans.unshift({ ...data, id: Date.now() });
     render();
   });
+
+  socket.on('connect', () => connectionStatus.textContent = 'Verbonden met PC server');
+  socket.on('disconnect', () => connectionStatus.textContent = '⏳ Verbinding met server verbroken...');
 
   function getFilteredScans() {
     if (currentTab === 'recent') return allScans.slice(0, 50);

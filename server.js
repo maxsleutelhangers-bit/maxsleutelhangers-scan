@@ -5,11 +5,12 @@ const path = require('path');
 const fs = require('fs');
 
 const DATA_FILE = path.join(__dirname, 'data.json');
-const RELAY_URL = process.env.RELAY_URL || (process.argv[2] === '--relay' && process.argv[3]) || '';
+const VERCEL_URL = process.env.VERCEL_URL || (process.argv[2] === '--vercel' && process.argv[3]) || '';
 const PORT = process.env.PORT || 3000;
 
 let data = { products: {}, scans: [] };
 const SESSION_CODE = Math.random().toString(36).slice(2, 8).toUpperCase();
+let lastPollId = 0;
 
 function load() {
   try {
@@ -34,9 +35,9 @@ app.get('/scan', (req, res) => res.sendFile(path.join(__dirname, 'public', 'scan
 
 app.get('/api/config', (req, res) => {
   res.json({
-    relayUrl: RELAY_URL,
+    vercelUrl: VERCEL_URL,
     sessionCode: SESSION_CODE,
-    mode: RELAY_URL ? 'relay' : 'local'
+    mode: VERCEL_URL ? 'vercel' : 'local'
   });
 });
 
@@ -64,55 +65,46 @@ app.get('/api/scans', (req, res) => {
   res.json(data.scans.slice(-100).reverse());
 });
 
-app.post('/api/scan', (req, res) => {
-  const { barcode, device_id } = req.body;
-  if (!barcode) return res.status(400).json({ error: 'barcode verplicht' });
-  handleScan({ barcode, device_id });
-  res.json({ success: true });
-});
-
 app.delete('/api/scans', (req, res) => {
   data.scans = [];
   save();
   res.json({ success: true });
 });
 
-function handleScan(msg) {
-  const { barcode, device_id } = msg;
+function handleScan(barcode) {
   const product = data.products[barcode] || null;
-  const scan = { barcode, product, device_id: device_id || null, scanned_at: new Date().toISOString() };
+  const scan = { barcode, product, device_id: 'vercel', scanned_at: new Date().toISOString() };
   data.scans.push(scan);
   save();
   io.emit('product-scanned', scan);
 }
 
-io.on('connection', (socket) => {
-  socket.on('scan', handleScan);
-});
+io.on('connection', () => {});
 
-if (RELAY_URL) {
-  let lastPoll = 0;
-  setInterval(async () => {
+if (VERCEL_URL) {
+  async function pollVercel() {
     try {
-      const url = `${RELAY_URL}/api/relay?session=${SESSION_CODE}&since=${lastPoll ? new Date(lastPoll).toISOString() : ''}`;
-      const res = await fetch(url);
-      const body = await res.json();
-      if (body.events && body.events.length > 0) {
-        for (const ev of body.events) {
-          handleScan(ev);
-          lastPoll = Math.max(lastPoll, new Date(ev.scanned_at).getTime());
+      const res = await fetch(`${VERCEL_URL}/api/poll?session=${SESSION_CODE}`);
+      if (res.ok) {
+        const scans = await res.json();
+        for (const s of scans) {
+          if (s.id && s.id > lastPollId) {
+            handleScan(s.barcode);
+          }
         }
+        const maxId = scans.reduce((m, x) => Math.max(m, x.id || 0), 0);
+        if (maxId > lastPollId) lastPollId = maxId;
       }
-      if (body.events && body.events.length === 0 && !lastPoll) {
-        lastPoll = Date.now();
-      }
-    } catch (e) { /* relay niet bereikbaar */ }
-  }, 2000);
+    } catch (_) {}
+    setTimeout(pollVercel, 2000);
+  }
+  console.log(`Vercel modus, sessie: ${SESSION_CODE}`);
+  pollVercel();
 }
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Scan Software draait op http://localhost:${PORT}`);
-  console.log(`Modus: ${RELAY_URL ? 'relay' : 'lokaal'}`);
-  if (RELAY_URL) console.log(`Sessiecode: ${SESSION_CODE} — relay: ${RELAY_URL}`);
+  console.log(`Modus: ${VERCEL_URL ? 'vercel (' + VERCEL_URL + ')' : 'lokaal'}`);
+  console.log(`Sessiecode: ${SESSION_CODE}`);
   console.log(`Dashboard: http://localhost:${PORT}/dashboard`);
 });

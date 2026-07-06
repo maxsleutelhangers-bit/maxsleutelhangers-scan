@@ -16,15 +16,14 @@
   .overlay.show { opacity: 1; pointer-events: auto; }
   .overlay-content { text-align: center; padding: 2rem; }
   .overlay-content .check { font-size: 4rem; color: #4ade80; margin-bottom: 1rem; }
-  .overlay-content .code { font-size: 1.2rem; font-family: monospace; color: #999; margin-bottom: 0.3rem; }
-  .overlay-content .status-text { font-size: 1.2rem; color: #4ade80; }
+  .overlay-content .code { font-size: 1.2rem; font-family: monospace; color: #999; margin-bottom: 0.5rem; }
+  .overlay-content .product-name { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.3rem; color: #fff; }
+  .overlay-content .product-price { font-size: 1.2rem; color: #4ade80; }
   .status { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: rgba(26,26,46,0.9); padding: 0.5rem 1.2rem; border-radius: 20px; font-size: 0.8rem; color: #999; white-space: nowrap; }
-  .flash { animation: flash 0.2s ease; }
-  @keyframes flash { 0% { background: #4ade80; } 100% { background: transparent; } }
 </style>
 </head>
 <body>
-  <div class="header">Richt camera op een barcode</div>
+  <div class="header" id="headerText">Richt camera op een barcode</div>
   <div id="reader"></div>
   <div class="status" id="status">Camera starten...</div>
 
@@ -32,52 +31,48 @@
     <div class="overlay-content">
       <div class="check">✓</div>
       <div class="code" id="overlayCode"></div>
-      <div class="status-text">Gescand!</div>
+      <div class="product-name" id="overlayName"></div>
+      <div class="product-price" id="overlayPrice"></div>
     </div>
   </div>
 
 <script>
   const params = new URLSearchParams(window.location.search);
   const sessionCode = params.get('s');
-  const relayUrl = params.get('r');
-  const deviceId = 'mobile-' + Math.random().toString(36).slice(2, 8);
+  const vercelUrl = window.location.origin;
+
+  if (sessionCode) {
+    document.getElementById('headerText').textContent = `Sessie: ${sessionCode}`;
+  }
+
   const statusEl = document.getElementById('status');
   const overlay = document.getElementById('overlay');
   let lastScan = 0;
 
   function showOverlay(barcode) {
     document.getElementById('overlayCode').textContent = barcode;
+    document.getElementById('overlayName').textContent = '';
+    document.getElementById('overlayPrice').textContent = '';
     overlay.classList.add('show');
     navigator.vibrate && navigator.vibrate(100);
     setTimeout(() => overlay.classList.remove('show'), 1500);
   }
 
-  function onScanSuccess(decodedText) {
+  async function onScanSuccess(decodedText) {
     const now = Date.now();
     if (now - lastScan < 2000) return;
     lastScan = now;
 
-    statusEl.textContent = decodedText;
-    statusEl.classList.remove('flash');
-    void statusEl.offsetWidth;
-    statusEl.classList.add('flash');
-
-    const payload = { barcode: decodedText, device_id: deviceId };
-    if (sessionCode && relayUrl) {
-      payload.session = sessionCode;
-      fetch(`${relayUrl}/api/relay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).catch(() => {});
-    } else {
-      fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).catch(() => {});
-    }
+    statusEl.textContent = `✅ ${decodedText}`;
     showOverlay(decodedText);
+
+    if (sessionCode) {
+      await fetch(`${vercelUrl}/api/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: decodedText, session: sessionCode })
+      });
+    }
   }
 
   const html5QrCode = new Html5Qrcode("reader");
