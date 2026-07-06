@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Scan</title>
+<script src="https://cdn.socket.io/4.8.0/socket.io.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  .header { background: #1a1a2e; padding: 1rem; text-align: center; font-size: 1rem; font-weight: 600; letter-spacing: 0.5px; }
+  #reader { width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  #reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
+  #reader img { display: none !important; }
+  .overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+  .overlay-content { text-align: center; padding: 2rem; }
+  .overlay-content .check { font-size: 4rem; color: #4ade80; margin-bottom: 1rem; }
+  .overlay-content .code { font-size: 1.2rem; font-family: monospace; color: #999; margin-bottom: 0.5rem; }
+  .overlay-content .product-name { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.3rem; }
+  .overlay-content .product-price { font-size: 1.2rem; color: #4ade80; }
+  .overlay-content .product-unknown { color: #f87171; margin-top: 0.5rem; }
+  .status { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: rgba(26,26,46,0.9); padding: 0.5rem 1.2rem; border-radius: 20px; font-size: 0.8rem; color: #999; white-space: nowrap; }
+  .flash { animation: flash 0.2s ease; }
+  @keyframes flash { 0% { background: #4ade80; } 100% { background: transparent; } }
+</style>
+</head>
+<body>
+  <div class="header">Richt camera op een barcode</div>
+  <div id="reader"></div>
+  <div class="status" id="status">Camera starten...</div>
+
+  <div class="overlay" id="overlay">
+    <div class="overlay-content">
+      <div class="check">✓</div>
+      <div class="code" id="overlayCode"></div>
+      <div class="product-name" id="overlayName"></div>
+      <div class="product-price" id="overlayPrice"></div>
+      <div class="product-unknown" id="overlayUnknown" style="display:none">Niet gevonden in database</div>
+    </div>
+  </div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const sessionCode = params.get('s');
+  const relayUrl = params.get('r');
+
+  let socket;
+  if (sessionCode && relayUrl) {
+    socket = io(relayUrl);
+    socket.on('connect', () => {
+      socket.emit('join-session', sessionCode);
+    });
+  } else {
+    socket = io();
+  }
+
+  const deviceId = 'mobile-' + Math.random().toString(36).slice(2, 8);
+  const statusEl = document.getElementById('status');
+  const overlay = document.getElementById('overlay');
+  let lastScan = 0;
+
+  function showOverlay(barcode, product) {
+    document.getElementById('overlayCode').textContent = barcode;
+    if (product) {
+      document.getElementById('overlayName').textContent = product.name;
+      document.getElementById('overlayPrice').textContent = `€${parseFloat(product.price).toFixed(2)}`;
+      document.getElementById('overlayUnknown').style.display = 'none';
+    } else {
+      document.getElementById('overlayUnknown').style.display = 'block';
+    }
+    overlay.classList.add('show');
+    navigator.vibrate && navigator.vibrate(100);
+    setTimeout(() => overlay.classList.remove('show'), 1500);
+  }
+
+  socket.on('product-scanned', (data) => {
+    showOverlay(data.barcode, data.product);
+  });
+
+  function onScanSuccess(decodedText) {
+    const now = Date.now();
+    if (now - lastScan < 2000) return;
+    lastScan = now;
+
+    statusEl.textContent = `✅ ${decodedText}`;
+    statusEl.classList.remove('flash');
+    void statusEl.offsetWidth;
+    statusEl.classList.add('flash');
+
+    socket.emit('scan', { barcode: decodedText, device_id: deviceId });
+  }
+
+  const html5QrCode = new Html5Qrcode("reader");
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+    onScanSuccess
+  ).then(() => {
+    statusEl.textContent = '📷 Camera actief';
+  }).catch(err => {
+    statusEl.textContent = '❌ Camera fout: ' + err;
+  });
+</script>
+</body>
+</html>

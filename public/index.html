@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scan Software</title>
+<style>
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; padding: 2rem; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+  p { color: #666; margin-bottom: 2rem; }
+  .links { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+  .card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 2rem; width: 200px; text-decoration: none; color: #fff; transition: all 0.2s; }
+  .card:hover { border-color: #4a4a8a; transform: translateY(-3px); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+  .card .icon { font-size: 3rem; margin-bottom: 1rem; }
+  .card .label { font-size: 1rem; font-weight: 600; }
+  .card .sub { font-size: 0.8rem; color: #666; margin-top: 0.3rem; }
+</style>
+</head>
+<body>
+  <h1>Scan Software</h1>
+  <p>Scan barcodes met je mobiel, zie producten op je PC.</p>
+  <div class="links">
+    <a href="/dashboard" class="card">
+      <div class="icon">🖥️</div>
+      <div class="label">Dashboard</div>
+      <div class="sub">PC — resultaten bekijken</div>
+    </a>
+    <a href="/scan" class="card">
+      <div class="icon">📱</div>
+      <div class="label">Scan</div>
+      <div class="sub">Mobiel — open op telefoon</div>
+    </a>
+  </div>
+</body>
+</html>

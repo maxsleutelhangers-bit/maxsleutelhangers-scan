@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: scan-software-relay
+    env: node
+    buildCommand: npm install --omit=dev
+    startCommand: node relay-server.js

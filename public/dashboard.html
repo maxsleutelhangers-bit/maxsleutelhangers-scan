@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scan Software — Dashboard</title>
+<script src="https://cdn.socket.io/4.8.0/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
+  .header { background: #1a1a2e; padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2a2a4a; }
+  .header h1 { font-size: 1.5rem; color: #fff; }
+  .header .count { background: #16213e; padding: 0.4rem 1rem; border-radius: 20px; font-size: 0.9rem; color: #a0a0ff; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  .empty { text-align: center; padding: 4rem 2rem; color: #666; }
+  .empty h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+  .empty p { font-size: 0.9rem; }
+  .products { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+  .product { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 1.2rem; transition: all 0.3s ease; animation: slideIn 0.3s ease; }
+  .product:hover { border-color: #4a4a8a; transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+  .product .barcode { font-size: 0.75rem; color: #666; font-family: monospace; margin-bottom: 0.3rem; }
+  .product .name { font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 0.3rem; }
+  .product .price { font-size: 1rem; color: #4ade80; font-weight: 500; }
+  .product .time { font-size: 0.75rem; color: #666; margin-top: 0.5rem; }
+  .product .no-match { color: #f87171; font-size: 0.85rem; margin-top: 0.3rem; }
+  .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+  .tab { padding: 0.5rem 1.2rem; border: 1px solid #2a2a4a; border-radius: 8px; background: transparent; color: #999; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+  .tab.active { background: #1a1a2e; color: #fff; border-color: #4a4a8a; }
+  .tab:hover { color: #fff; }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  .session-panel { background: linear-gradient(135deg, #1a1a2e, #16213e); border: 1px solid #4a4a8a; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+  .session-panel .info { flex: 1; min-width: 200px; }
+  .session-panel .info h2 { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.3rem; }
+  .session-panel .code { font-size: 2.5rem; font-weight: 700; color: #fff; letter-spacing: 4px; font-family: monospace; }
+  .session-panel .sub { font-size: 0.8rem; color: #666; margin-top: 0.3rem; }
+  .session-panel .qr { background: #fff; padding: 8px; border-radius: 8px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Scan Software</h1>
+    <span class="count" id="scanCount">0 gescand</span>
+  </div>
+
+  <div class="container">
+    <div id="sessionPanel" class="session-panel" style="display:none"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="recent">Recent</button>
+      <button class="tab" data-tab="today">Vandaag</button>
+      <button class="tab" data-tab="all">Alles</button>
+    </div>
+
+    <div id="emptyState" class="empty">
+      <h2>Wacht op scans...</h2>
+      <p id="emptyMsg">Open de scan-pagina op je mobiel om te beginnen.</p>
+    </div>
+
+    <div id="productGrid" class="products" style="display:none"></div>
+  </div>
+
+<script>
+  const socket = io();
+  const productGrid = document.getElementById('productGrid');
+  const emptyState = document.getElementById('emptyState');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const scanCount = document.getElementById('scanCount');
+  const sessionPanel = document.getElementById('sessionPanel');
+  let allScans = [];
+  let currentTab = 'recent';
+
+  fetch('/api/config').then(r => r.json()).then(config => {
+    if (config.mode === 'relay') {
+      const scanUrl = `${config.relayUrl}/scan?s=${config.sessionCode}&r=${encodeURIComponent(config.relayUrl)}`;
+      sessionPanel.style.display = 'flex';
+      sessionPanel.innerHTML = `
+        <div class="info">
+          <h2>Scan verbinding</h2>
+          <div class="code">${config.sessionCode}</div>
+          <div class="sub">Scan de QR-code met je mobiel om te verbinden</div>
+        </div>
+        <div class="qr" id="qrCode"></div>
+      `;
+      new QRCode(document.getElementById('qrCode'), { text: scanUrl, width: 130, height: 130 });
+      emptyMsg.textContent = `Scan de QR-code met je mobiel om te beginnen. Sessie: ${config.sessionCode}`;
+    } else {
+      emptyMsg.textContent = 'Open je mobiel op http://&lt;pc-ip&gt;:3000/scan om te beginnen.';
+    }
+  });
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentTab = tab.dataset.tab;
+      render();
+    });
+  });
+
+  socket.on('product-scanned', (data) => {
+    allScans.unshift({ ...data, id: Date.now() });
+    render();
+  });
+
+  function getFilteredScans() {
+    if (currentTab === 'recent') return allScans.slice(0, 50);
+    if (currentTab === 'today') {
+      const today = new Date().toDateString();
+      return allScans.filter(s => new Date(s.scanned_at).toDateString() === today);
+    }
+    return allScans;
+  }
+
+  function render() {
+    const filtered = getFilteredScans();
+    scanCount.textContent = `${allScans.length} gescand`;
+    if (allScans.length === 0) {
+      emptyState.style.display = 'block';
+      productGrid.style.display = 'none';
+      return;
+    }
+    emptyState.style.display = 'none';
+    productGrid.style.display = 'grid';
+    productGrid.innerHTML = filtered.map(s => {
+      const p = s.product;
+      const time = new Date(s.scanned_at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+      return `
+        <div class="product">
+          <div class="barcode">${s.barcode}</div>
+          <div class="name">${p ? p.name : 'Onbekend product'}</div>
+          ${p ? `<div class="price">€${parseFloat(p.price).toFixed(2)}</div>` : '<div class="no-match">Niet in database</div>'}
+          <div class="time">${time}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  fetch('/api/scans')
+    .then(r => r.json())
+    .then(scans => {
+      allScans = scans.map(s => ({
+        barcode: s.barcode,
+        product: s.name ? { name: s.name, price: s.price, image: s.image } : null,
+        scanned_at: s.scanned_at
+      }));
+      render();
+    });
+</script>
+</body>
+</html>

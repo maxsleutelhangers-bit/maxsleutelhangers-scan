@@ -1,0 +1,15 @@
+{
+  "name": "scan-software",
+  "version": "1.0.0",
+  "description": "Scan barcodes met mobiel, zie producten op PC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "socket.io": "^4.8.0",
+    "socket.io-client": "^4.8.3"
+  }
+}
